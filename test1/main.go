@@ -18,7 +18,7 @@ const (
 
 var productIDs = []string{
 	"IP0418",
-	"IY2911",
+	//"IY2911",
 	//"II5763",
 	//"IT2491",
 	//"IZ4922",
@@ -46,7 +46,7 @@ func main() {
 			Path: "",
 			Args: []string{
 				"--window-size=1920,1080",
-				//"--headless",
+				"--headless",
 				"--no-sandbox",
 				"--blink-settings=imagesEnabled=false", // Disable images
 				"--blink-settings=cssEnabled=false",    // Disable CSS
@@ -70,6 +70,15 @@ func main() {
 			log.Printf("Failed to load page for product ID %s: %v", productID, err)
 			continue
 		}
+
+		productInfo := fetchProductInfo(wd)
+		fmt.Println("Product Info for ID:", productID)
+		fmt.Println("Breadcrumbs:", productInfo.Breadcrumbs)
+		fmt.Println("Category:", productInfo.Category)
+		fmt.Println("Name:", productInfo.Name)
+		fmt.Println("Price:", productInfo.Price)
+		fmt.Println("Sizes:", productInfo.Sizes)
+		fmt.Println()
 
 		// Find all carousel list items
 		carouselListItems, err := wd.FindElements(selenium.ByCSSSelector, ".coordinateItems .carouselListitem")
@@ -117,6 +126,14 @@ func main() {
 	}
 }
 
+type ProductInfo struct {
+	Category            string
+	Name                string
+	Price               string
+	Sizes               []string
+	Breadcrumbs         []string
+	CoordinatedProducts []CoordinatedProductInfo
+}
 type CoordinatedProductInfo struct {
 	Name           string
 	Price          string
@@ -125,6 +142,34 @@ type CoordinatedProductInfo struct {
 	ProductPageURL string
 }
 
+func fetchProductInfo(wd selenium.WebDriver) ProductInfo {
+	var productInfo ProductInfo
+
+	// Fetch breadcrumbs
+	breadcrumbs := fetchBreadcrumbs(wd)
+	productInfo.Breadcrumbs = breadcrumbs
+	productInfo.Category = getText(wd, ".categoryName")
+	productInfo.Name = getText(wd, ".itemTitle")
+	productInfo.Price = getText(wd, ".price-value")
+
+	sizesElements, err := wd.FindElements(selenium.ByCSSSelector, ".sizeSelectorListItemButton")
+	if err != nil {
+		log.Printf("Failed to find size elements: %v", err)
+	} else {
+		for _, sizeElement := range sizesElements {
+			size, err := sizeElement.Text()
+			if err != nil {
+				log.Printf("Failed to get size text: %v", err)
+				continue
+			}
+			if size != "disable" {
+				productInfo.Sizes = append(productInfo.Sizes, size)
+			}
+		}
+	}
+
+	return productInfo
+}
 func fetchCoordinatedProductInfo(wd selenium.WebDriver) CoordinatedProductInfo {
 	var coordinatedProductInfo CoordinatedProductInfo
 
@@ -159,4 +204,26 @@ func getAttribute(wd selenium.WebDriver, selector, attribute string) string {
 		log.Fatalf("Failed to get element attribute: %v", err)
 	}
 	return attr
+}
+func fetchBreadcrumbs(wd selenium.WebDriver) []string {
+	var breadcrumbs []string
+
+	// Find breadcrumb items
+	breadcrumbItems, err := wd.FindElements(selenium.ByCSSSelector, ".breadcrumbListItemLink")
+	if err != nil {
+		log.Printf("Failed to find breadcrumb items: %v", err)
+		return breadcrumbs
+	}
+
+	// Extract text from breadcrumb items
+	for _, item := range breadcrumbItems {
+		text, err := item.Text()
+		if err != nil {
+			log.Printf("Failed to get breadcrumb text: %v", err)
+			continue
+		}
+		breadcrumbs = append(breadcrumbs, text)
+	}
+
+	return breadcrumbs
 }

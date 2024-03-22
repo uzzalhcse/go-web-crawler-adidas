@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	url := "https://shop.adidas.jp/products/IE3439/"
+	url := "https://shop.adidas.jp/products/IP0418/"
 	breadcrumbString := fetchBreadcrumbString(url)
 	fmt.Println("breadcrumbString:", breadcrumbString)
 
