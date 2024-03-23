@@ -3,17 +3,16 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/tealeg/xlsx"
+	"github.com/tebeka/selenium"
 	"log"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/tebeka/selenium"
 )
 
 func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
 	var product Product
-	product.ID = productID
 
 	url := baseURL + "/products/" + productID + "/"
 	if err := wd.Get(url); err != nil {
@@ -21,22 +20,36 @@ func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
 		return product
 	}
 
-	// Scroll to the bottom of the page
-	if err := scrollPageToBottom(wd); err != nil {
-		log.Printf("Failed to scroll to bottom of page: %v", err)
+	err := autoScroll(wd)
+	if err != nil {
+		log.Printf("Failed to scroll the page: %v", err)
 	}
 
-	product.Info = getProductInfo(wd)
+	product = getProductInfo(wd)
+	product.ID = productID
 	product.Coordinates = getCoordinatedProductInfo(wd)
-	product.Description = getProductDescription(wd)
 	product.SizeChart = parseSizeChartHTML(wd)
 	product.ProductMeta = parseProductMeta(wd)
 
 	return product
 }
 
-func getProductInfo(wd selenium.WebDriver) ProductInfo {
-	var productInfo ProductInfo
+func autoScroll(wd selenium.WebDriver) error {
+	el, err := wd.FindElement(selenium.ByCSSSelector, ".js-articlePromotion")
+	if err != nil {
+		return fmt.Errorf("dom scrolling error: %v", err)
+	}
+	fmt.Println("autoScroll...")
+
+	if _, err := wd.ExecuteScript("arguments[0].scrollIntoView(true);", []interface{}{el}); err != nil {
+		log.Printf("Failed to scroll element into view: %v", err)
+	}
+	time.Sleep(1 * time.Second)
+	return nil
+}
+
+func getProductInfo(wd selenium.WebDriver) Product {
+	var productInfo Product
 
 	productInfo.Breadcrumbs = fetchBreadcrumbs(wd)
 	productInfo.Category = getText(wd, ".categoryName")
@@ -59,6 +72,29 @@ func getProductInfo(wd selenium.WebDriver) ProductInfo {
 		}
 	}
 
+	// Fetching subheading
+	subheadingElem, err := wd.FindElement(selenium.ByCSSSelector, ".itemFeature")
+	if err != nil {
+		log.Printf("Failed to find subheading element: %v", err)
+	} else {
+		productInfo.DescriptionTitle, _ = subheadingElem.Text()
+	}
+
+	// Fetching main text
+	mainTextElem, err := wd.FindElement(selenium.ByCSSSelector, ".commentItem-mainText")
+	if err != nil {
+		log.Printf("Failed to find main text element: %v", err)
+	} else {
+		productInfo.DescriptionMainText, _ = mainTextElem.Text()
+	}
+
+	// Fetching article features
+	articleFeatures, _ := wd.FindElements(selenium.ByCSSSelector, ".articleFeaturesItem.test-feature")
+	for _, featureElem := range articleFeatures {
+		feature, _ := featureElem.Text()
+		productInfo.DescriptionItemization = append(productInfo.DescriptionItemization, feature)
+	}
+
 	return productInfo
 }
 
@@ -74,10 +110,10 @@ func getCoordinatedProductInfo(wd selenium.WebDriver) []CoordinatedProductInfo {
 
 	for _, item := range carouselListItems {
 		// Scroll the item into view
-		if _, err := wd.ExecuteScript("arguments[0].scrollIntoView(true);", []interface{}{item}); err != nil {
-			log.Printf("Failed to scroll element into view: %v", err)
-			continue
-		}
+		//if _, err := wd.ExecuteScript("arguments[0].scrollIntoView(true);", []interface{}{item}); err != nil {
+		//	log.Printf("Failed to scroll element into view: %v", err)
+		//	continue
+		//}
 
 		// Click on the carousel list item
 		if err := item.Click(); err != nil {
@@ -86,7 +122,7 @@ func getCoordinatedProductInfo(wd selenium.WebDriver) []CoordinatedProductInfo {
 		}
 
 		// Wait for the content to load (adjust as needed)
-		time.Sleep(2 * time.Second)
+		//time.Sleep(2 * time.Second)
 
 		coordinatedProduct := CoordinatedProductInfo{
 			Name:           getText(wd, ".coordinate_item_container .title"),
@@ -146,34 +182,6 @@ func fetchBreadcrumbs(wd selenium.WebDriver) []string {
 	}
 
 	return breadcrumbs
-}
-func getProductDescription(wd selenium.WebDriver) ProductDescription {
-	var description ProductDescription
-
-	// Fetching subheading
-	subheadingElem, err := wd.FindElement(selenium.ByCSSSelector, ".itemFeature")
-	if err != nil {
-		log.Printf("Failed to find subheading element: %v", err)
-	} else {
-		description.Title, _ = subheadingElem.Text()
-	}
-
-	// Fetching main text
-	mainTextElem, err := wd.FindElement(selenium.ByCSSSelector, ".commentItem-mainText")
-	if err != nil {
-		log.Printf("Failed to find main text element: %v", err)
-	} else {
-		description.MainText, _ = mainTextElem.Text()
-	}
-
-	// Fetching article features
-	articleFeatures, _ := wd.FindElements(selenium.ByCSSSelector, ".articleFeaturesItem.test-feature")
-	for _, featureElem := range articleFeatures {
-		feature, _ := featureElem.Text()
-		description.ArticleFeatures = append(description.ArticleFeatures, feature)
-	}
-
-	return description
 }
 
 func parseSizeChartHTML(wd selenium.WebDriver) SizeChart {
@@ -319,17 +327,6 @@ func parseReviewerIDFromHrefAttr(hrefAttr string) string {
 	reviewerID := parts[len(parts)-2]
 	return reviewerID
 }
-func scrollPageToBottom(wd selenium.WebDriver) error {
-	// Execute JavaScript to scroll to the bottom of the page
-	_, err := wd.ExecuteScript("window.scrollTo(0, document.body.scrollHeight);", nil)
-	if err != nil {
-		return fmt.Errorf("failed to scroll to bottom of page: %w", err)
-	}
-	// Add a delay to allow content to load after scrolling
-	time.Sleep(2 * time.Second)
-	return nil
-}
-
 func saveProductInfoJSON(product Product, productID string) error {
 	// Marshal product to JSON
 	productJSON, err := json.MarshalIndent(product, "", "  ")
@@ -343,7 +340,7 @@ func saveProductInfoJSON(product Product, productID string) error {
 	}
 
 	// Write JSON to file in dist folder
-	filename := fmt.Sprintf("dist/product_%s.json", productID)
+	filename := fmt.Sprintf("dist/json/product_%s.json", productID)
 	file, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %w", filename, err)
@@ -353,6 +350,84 @@ func saveProductInfoJSON(product Product, productID string) error {
 	if _, err := file.Write(productJSON); err != nil {
 		return fmt.Errorf("failed to write JSON to file %s: %w", filename, err)
 	}
+
+	return nil
+}
+func saveProductInfoSpreadsheet(product Product) error {
+
+	// Open the existing Excel file or create a new one if it doesn't exist
+	filename := fmt.Sprintf("dist/sheets/product.xlsx")
+	fileExcel, err := xlsx.OpenFile(filename)
+	if err != nil {
+		fileExcel = xlsx.NewFile()
+	}
+
+	// Get the sheet "Products" or create a new one if it doesn't exist
+	var sheet *xlsx.Sheet
+	if len(fileExcel.Sheets) == 0 {
+		sheet, err = fileExcel.AddSheet("Products")
+		if err != nil {
+			fmt.Println("Error adding sheet:", err)
+			return err
+		}
+	} else {
+		sheet = fileExcel.Sheets[0] // Get the first sheet
+	}
+
+	// If the sheet is empty, add headers
+	if sheet.MaxRow == 0 {
+		row := sheet.AddRow()
+		headers := []string{"ID", "Category", "Name", "Price", "Sizes", "Breadcrumbs", "Coordinates", "Description Title", "Description MainText", "Description Itemization", "SizeChart", "OverallRating", "NumberOfReviews", "RecommendedRate", "ItemRatings", "UserReviews"}
+		for _, header := range headers {
+			cell := row.AddCell()
+			cell.SetString(header)
+		}
+	}
+	row := sheet.AddRow()
+
+	// Convert Coordinates to JSON
+	coordinatesJSON, err := json.Marshal(product.Coordinates)
+	if err != nil {
+		fmt.Println("Error marshalling Coordinates to JSON:", err)
+	}
+
+	// Convert ItemRatings to JSON
+	itemRatingsJSON, err := json.Marshal(product.ProductMeta.ItemRatings)
+	if err != nil {
+		fmt.Println("Error marshalling ItemRatings to JSON:", err)
+	}
+
+	// Convert UserReviews to JSON
+	userReviewsJSON, err := json.Marshal(product.ProductMeta.UserReviews)
+	if err != nil {
+		fmt.Println("Error marshalling UserReviews to JSON:", err)
+	}
+
+	row.AddCell().SetString(product.ID)
+	row.AddCell().SetString(product.Category)
+	row.AddCell().SetString(product.Name)
+	row.AddCell().SetString(product.Price)
+	row.AddCell().SetString(strings.Join(product.Sizes, ","))
+	row.AddCell().SetString(strings.Join(product.Breadcrumbs, ","))
+	row.AddCell().SetString(string(coordinatesJSON)) // Add Coordinates JSON
+	row.AddCell().SetString(product.DescriptionTitle)
+	row.AddCell().SetString(product.DescriptionMainText)
+	row.AddCell().SetString(strings.Join(product.DescriptionItemization, ","))
+	row.AddCell().SetString(fmt.Sprintf("%v", product.SizeChart))
+	row.AddCell().SetString(product.ProductMeta.OverallRating)
+	row.AddCell().SetString(product.ProductMeta.NumberOfReviews)
+	row.AddCell().SetString(product.ProductMeta.RecommendedRate)
+	row.AddCell().SetString(string(itemRatingsJSON)) // Add ItemRatings JSON
+	row.AddCell().SetString(string(userReviewsJSON)) // Add UserReviews JSON
+
+	// Save the Excel file
+	err = fileExcel.Save(filename)
+	if err != nil {
+		fmt.Println("Error saving Excel file:", err)
+		return err
+	}
+
+	fmt.Println("Excel file generated successfully")
 
 	return nil
 }

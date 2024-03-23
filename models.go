@@ -1,20 +1,18 @@
 package main
 
 type Product struct {
-	ID          string
-	Info        ProductInfo
-	Coordinates []CoordinatedProductInfo
-	Description ProductDescription
-	SizeChart   SizeChart
-	ProductMeta ProductMeta
-}
-
-type ProductInfo struct {
-	Category    string
-	Name        string
-	Price       string
-	Sizes       []string
-	Breadcrumbs []string
+	ID                     string
+	Name                   string
+	Category               string
+	Price                  string
+	Sizes                  []string
+	Breadcrumbs            []string
+	DescriptionTitle       string
+	DescriptionMainText    string
+	DescriptionItemization []string
+	Coordinates            []CoordinatedProductInfo
+	SizeChart              SizeChart
+	ProductMeta            ProductMeta
 }
 
 type CoordinatedProductInfo struct {
@@ -23,11 +21,6 @@ type CoordinatedProductInfo struct {
 	ProductNumber  string
 	ImageURL       string
 	ProductPageURL string
-}
-type ProductDescription struct {
-	Title           string
-	MainText        string
-	ArticleFeatures []string
 }
 type SizeChart struct {
 	CategoryNames []string
