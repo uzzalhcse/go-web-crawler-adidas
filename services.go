@@ -8,19 +8,66 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 )
+
+func fetchProductIds(wd selenium.WebDriver) []string {
+	totalPages := []int{1}
+	var ids []string
+	fmt.Println("Fetching Product IDs")
+
+	for _, page := range totalPages {
+		url := fmt.Sprintf("%v/item/?order=11&gender=mens&limit=100&page=%v", baseURL, page)
+		if err := wd.Get(url); err != nil {
+			log.Printf("Failed to load page %s: %v", page, err)
+		}
+
+		// itemCardArea-cards
+
+		listItems, err := wd.FindElements(selenium.ByCSSSelector, ".itemCardArea-cards")
+		if err != nil {
+			log.Printf("Failed to find list items: %v", err)
+		}
+
+		for index, item := range listItems {
+			scrollIndex := index
+			if index > 0 && index < 10 {
+				scrollIndex = index * 10
+				//fmt.Println("index", index)
+				//fmt.Println("scrollIndex", scrollIndex)
+				err := autoScroll(wd, fmt.Sprintf(".itemCardArea-cards:nth-child(%v)", scrollIndex))
+				if err != nil {
+					log.Printf("Failed to scroll the page: %v", err)
+				}
+			}
+			elem, err := item.FindElement(selenium.ByCSSSelector, ".image_link")
+			if err != nil {
+				log.Fatalf("Failed to find element for attribute: %v", err)
+			}
+			id, err := elem.GetAttribute("data-ga-eec-product-id")
+			if err != nil {
+				log.Fatalf("Failed to get element attribute: %v", err)
+			}
+			ids = append(ids, id)
+		}
+	}
+
+	fmt.Println(fmt.Sprintf("Total %v Product Found", len(ids)))
+	return ids
+
+}
 
 func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
 	var product Product
 
 	url := baseURL + "/products/" + productID + "/"
+	fmt.Println("Fetching Product Info for: ", url)
+
 	if err := wd.Get(url); err != nil {
 		log.Printf("Failed to load page for product ID %s: %v", productID, err)
 		return product
 	}
 
-	err := autoScroll(wd)
+	err := autoScroll(wd, ".js-articlePromotion")
 	if err != nil {
 		log.Printf("Failed to scroll the page: %v", err)
 	}
@@ -31,20 +78,20 @@ func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
 	product.SizeChart = parseSizeChartHTML(wd)
 	product.ProductMeta = parseProductMeta(wd)
 
+	fmt.Println("Fetching Product Info Completed: ", productID)
 	return product
 }
 
-func autoScroll(wd selenium.WebDriver) error {
-	el, err := wd.FindElement(selenium.ByCSSSelector, ".js-articlePromotion")
+func autoScroll(wd selenium.WebDriver, selector string) error {
+	el, err := wd.FindElement(selenium.ByCSSSelector, selector)
 	if err != nil {
 		return fmt.Errorf("dom scrolling error: %v", err)
 	}
-	fmt.Println("autoScroll...")
-
+	//fmt.Println("autoScroll...")
 	if _, err := wd.ExecuteScript("arguments[0].scrollIntoView(true);", []interface{}{el}); err != nil {
 		log.Printf("Failed to scroll element into view: %v", err)
 	}
-	time.Sleep(1 * time.Second)
+	//time.Sleep(1 * time.Second)
 	return nil
 }
 
@@ -66,16 +113,14 @@ func getProductInfo(wd selenium.WebDriver) Product {
 				log.Printf("Failed to get size text: %v", err)
 				continue
 			}
-			if size != "disable" {
-				productInfo.Sizes = append(productInfo.Sizes, size)
-			}
+			productInfo.Sizes = append(productInfo.Sizes, size)
 		}
 	}
 
-	// Fetching subheading
+	// Fetching sub-heading
 	subheadingElem, err := wd.FindElement(selenium.ByCSSSelector, ".itemFeature")
 	if err != nil {
-		log.Printf("Failed to find subheading element: %v", err)
+		log.Printf("DescriptionTitle not available")
 	} else {
 		productInfo.DescriptionTitle, _ = subheadingElem.Text()
 	}
@@ -83,7 +128,7 @@ func getProductInfo(wd selenium.WebDriver) Product {
 	// Fetching main text
 	mainTextElem, err := wd.FindElement(selenium.ByCSSSelector, ".commentItem-mainText")
 	if err != nil {
-		log.Printf("Failed to find main text element: %v", err)
+		log.Printf("DescriptionMainText not available")
 	} else {
 		productInfo.DescriptionMainText, _ = mainTextElem.Text()
 	}
@@ -109,20 +154,10 @@ func getCoordinatedProductInfo(wd selenium.WebDriver) []CoordinatedProductInfo {
 	}
 
 	for _, item := range carouselListItems {
-		// Scroll the item into view
-		//if _, err := wd.ExecuteScript("arguments[0].scrollIntoView(true);", []interface{}{item}); err != nil {
-		//	log.Printf("Failed to scroll element into view: %v", err)
-		//	continue
-		//}
-
 		// Click on the carousel list item
 		if err := item.Click(); err != nil {
-			log.Printf("Failed to click on carousel list item: %v", err)
 			continue
 		}
-
-		// Wait for the content to load (adjust as needed)
-		//time.Sleep(2 * time.Second)
 
 		coordinatedProduct := CoordinatedProductInfo{
 			Name:           getText(wd, ".coordinate_item_container .title"),
@@ -249,7 +284,11 @@ func parseProductMeta(wd selenium.WebDriver) ProductMeta {
 	var productMeta ProductMeta
 
 	// Extract overall rating
-	overallRatingElem, _ := wd.FindElement(selenium.ByCSSSelector, ".BVRRRatingNormalOutOf .BVRRNumber.BVRRRatingNumber")
+	overallRatingElem, err := wd.FindElement(selenium.ByCSSSelector, ".BVRRRatingNormalOutOf .BVRRNumber.BVRRRatingNumber")
+	if err != nil {
+		fmt.Printf("ProductMeta not available")
+		return productMeta
+	}
 	overallRatingText, _ := overallRatingElem.Text()
 	productMeta.OverallRating = overallRatingText
 
@@ -302,13 +341,10 @@ func parseProductMeta(wd selenium.WebDriver) ProductMeta {
 		ratingElem, _ := reviewElem.FindElement(selenium.ByCSSSelector, ".BVRRNumber.BVRRRatingNumber")
 		ratingText, _ := ratingElem.Text()
 		review.Rating = ratingText
+		idAttr, _ := reviewElem.GetAttribute("id")
 
-		// Extract reviewer ID from the name attribute
-		anchorElem, _ := reviewElem.FindElement(selenium.ByCSSSelector, "a.BVRRUserProfileImageLink")
-		hrefAttr, _ := anchorElem.GetAttribute("href")
-
-		// Extract the reviewer ID from the href attribute
-		reviewerID := parseReviewerIDFromHrefAttr(hrefAttr)
+		// Extract the reviewer ID
+		reviewerID := parseReviewerIDFromId(idAttr)
 
 		// Set the reviewer ID
 		review.ReviewerID = reviewerID
@@ -320,11 +356,10 @@ func parseProductMeta(wd selenium.WebDriver) ProductMeta {
 
 	return productMeta
 }
-func parseReviewerIDFromHrefAttr(hrefAttr string) string {
-	// Split the href attribute value by "/"
-	parts := strings.Split(hrefAttr, "/")
-	// The reviewer ID should be the second-to-last part
-	reviewerID := parts[len(parts)-2]
+func parseReviewerIDFromId(id string) string {
+	parts := strings.Split(id, "_")
+	// The reviewer ID should be the last part of the ID string
+	reviewerID := parts[len(parts)-1]
 	return reviewerID
 }
 func saveProductInfoJSON(product Product, productID string) error {
@@ -427,7 +462,7 @@ func saveProductInfoSpreadsheet(product Product) error {
 		return err
 	}
 
-	fmt.Println("Excel file generated successfully")
+	fmt.Println("Product saved into excel file successfully")
 
 	return nil
 }
