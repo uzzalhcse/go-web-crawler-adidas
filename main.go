@@ -5,6 +5,8 @@ import (
 	"github.com/tebeka/selenium/chrome"
 	"log"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/tebeka/selenium"
 )
@@ -12,19 +14,29 @@ import (
 const (
 	baseURL          = "https://shop.adidas.jp"
 	chromeDriverPath = "./assets/chromedriver.exe"
+	maxWorkers       = 20
+	port             = 4444
 )
 
-//	var productIDs = []string{
-//		"IP0418",
-//		"IY2911",
-//		"II5763",
-//		//"IT2491",
-//		//"IZ4922",
-//	}
-//var productIds = []string{"IF9280", "ID8708", "ID5480", "IE5836", "B75807", "BD7633", "ID2350", "ID5103", "GW3774", "IE5485", "EG4959", "IF3219", "ID1994", "IF3233", "IE4230", "HQ6900", "HP8739", "IE3437", "HQ6787", "ID0985", "DB3021", "IE4931", "ID1600", "IF3235", "IE4783", "II5763", "H06260", "BD7632", "HP2201", "FX5499", "FX5500", "IE0480", "IK9149", "FX9028", "IH7502", "IG8296", "IG6421", "IE3710", "IG8482", "HQ6893"}
+var ids = []string{
+	"IF9280",
+	"ID8708",
+	"ID5480",
+	//"B75807", "BD7633", "ID2350", "IE5836", "ID5103", "GW3774", "IF3219",
+	//"IE5485", "EG4959", "ID1994", "HQ6900", "IE4230", "IF3233", "IE3437", "HP8739", "ID0985", "HQ6787",
+	//"DB3021", "ID1600", "BD7632", "IF3235", "H06260", "HP2201", "IE0480", "IE4931", "II5763", "IE4783",
+	//"IH7502", "FX5500", "FX5499", "IK9149", "FX9028", "IG6421", "IG8296", "IG8482", "IE3710", "HQ6893",
+	//"IE4195", "IY8077", "ID5961", "IF1953", "IG1504", "IG6047", "IG6049", "IF0202", "IG6201", "IG8301",
+	//"IS0541", "IE0422", "IF6491", "CQ2809", "IF3813", "IG6440", "GY5695", "FX5509", "HQ6785", "GX3937",
+	//"ID1995", "EG4958", "IH7496", "ID6990", "IZ4926", "FX5508", "FX5501", "ID0986", "ID4637", "IG6191",
+	//"IF3914", "IU0106", "IZ4923", "HZ5730", "HQ8718", "ID0983", "IG8295", "IG5929", "IJ7055", "FV0321",
+	//"IF8047", "IF9773", "GY0042", "IG4036", "ID4950", "IT2491", "IF6162", "IT2492", "IG8661", "IY8075",
+	//"IE3709", "EG4957", "IF6514", "IY8076", "IF8770", "IG6192", "IG3136", "IG1561", "ID2564", "GZ1537",
+}
+
+var products []Product
 
 func main() {
-	port := 8088
 	service, err := selenium.NewChromeDriverService(chromeDriverPath, port)
 	if err != nil {
 		log.Fatalf("Error starting the ChromeDriver server: %v", err)
@@ -33,24 +45,76 @@ func main() {
 
 	wd := createWebDriver(port)
 	defer wd.Quit()
-	ids := fetchProductIds(wd)
+
+	//ids := fetchProductIds(wd)
+	startTime := time.Now()
+	fetchProductAsync(ids)
+	//fetchProduct(wd, ids)
+	totalTime := time.Since(startTime).Minutes()
+	log.Printf("Total time elapsed: %.2f Minutes", totalTime)
+
+}
+
+func fetchProductAsync(ids []string) {
+	var wg sync.WaitGroup
+	jobs := make(chan string)
+
+	fmt.Println("Len", len(ids))
+
+	// Start worker pool
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for productID := range jobs {
+				wd := createWebDriver(port) // Create a new WebDriver instance
+
+				product := fetchProductInfo(wd, productID)
+				if product.Name == "" {
+					log.Printf("Failed to fetch product info for ID %s", productID)
+					continue
+				}
+				products = append(products, product)
+
+				log.Printf("Product info for ID %s Fetched successfully", productID)
+				wd.Quit() // Quit the WebDriver instance after use
+			}
+		}()
+	}
+
+	// Add jobs to the channel
 	for i, productID := range ids {
-		fmt.Printf("[%v]Fetching Product Info for: %v", i, productID)
+		fmt.Println("Sending Job:", i)
+		jobs <- productID
+		time.Sleep(500 * time.Millisecond)
+	}
+	close(jobs)
+
+	wg.Wait()
+
+	if err := saveProductInfoSpreadsheet(products); err != nil {
+		log.Printf("Failed to save Xlxs %v", err)
+	}
+	if err := saveProductInfoJSON(products); err != nil {
+		log.Printf("Failed to save Json %v", err)
+	}
+}
+func fetchProduct(wd selenium.WebDriver, ids []string) {
+	for _, productID := range ids {
 		product := fetchProductInfo(wd, productID)
 		if product.Name == "" {
 			log.Printf("Failed to fetch product info for ID %s", productID)
-			continue
+			return
 		}
+		products = append(products, product)
+		log.Printf("Product info for ID %s Fetched successfully", productID)
+	}
 
-		if err := saveProductInfoJSON(product, productID); err != nil {
-			log.Printf("Failed to save product info for ID %s: %v", productID, err)
-			continue
-		}
-		if err := saveProductInfoSpreadsheet(product); err != nil {
-			log.Printf("Failed to save product info for ID %s: %v", productID, err)
-			continue
-		}
-		log.Printf("Product info for ID %s saved successfully", productID)
+	if err := saveProductInfoSpreadsheet(products); err != nil {
+		log.Printf("Failed to save Xlxs %v", err)
+	}
+	if err := saveProductInfoJSON(products); err != nil {
+		log.Printf("Failed to save Json %v", err)
 	}
 }
 
@@ -66,13 +130,39 @@ func createWebDriver(port int) selenium.WebDriver {
 				"--headless",
 				"--no-sandbox",
 				"--log-level=3",
+				"--disable-gpu",
+				"--disable-dev-shm-usage",
+				"--disable-web-security",
 			},
 		},
 	)
-
 	wd, err := selenium.NewRemote(caps, "http://127.0.0.1:"+strconv.Itoa(port)+"/wd/hub")
 	if err != nil {
 		log.Fatalf("Failed to create WebDriver: %v", err)
 	}
 	return wd
+}
+
+func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
+	var product Product
+	url := baseURL + "/products/" + productID + "/"
+
+	log.Printf("Fetching Product info for Url %s", url)
+	if err := wd.Get(url); err != nil {
+		log.Printf("Failed to load page for product ID %s: %v", productID, err)
+	}
+	//time.Sleep(2 * time.Second)
+	err := autoScroll(wd, ".js-articlePromotion")
+	if err != nil {
+		log.Printf("Failed to scroll the page: %v", err)
+	}
+
+	product = getProductInfo(wd)
+	product.ID = productID
+	product.Coordinates = getCoordinatedProductInfo(wd)
+	product.SizeChart = parseSizeChartHTML(wd)
+	product.ProductMeta = parseProductMeta(wd)
+
+	fmt.Println("Fetching Product Info Completed: ", productID)
+	return product
 }

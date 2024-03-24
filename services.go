@@ -8,20 +8,19 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 func fetchProductIds(wd selenium.WebDriver) []string {
 	totalPages := []int{1}
 	var ids []string
-	fmt.Println("Fetching Product IDs")
 
 	for _, page := range totalPages {
 		url := fmt.Sprintf("%v/item/?order=11&gender=mens&limit=100&page=%v", baseURL, page)
+		fmt.Printf("Fetching Product Page: %v", url)
 		if err := wd.Get(url); err != nil {
 			log.Printf("Failed to load page %s: %v", page, err)
 		}
-
-		// itemCardArea-cards
 
 		listItems, err := wd.FindElements(selenium.ByCSSSelector, ".itemCardArea-cards")
 		if err != nil {
@@ -32,20 +31,18 @@ func fetchProductIds(wd selenium.WebDriver) []string {
 			scrollIndex := index
 			if index > 0 && index < 10 {
 				scrollIndex = index * 10
-				//fmt.Println("index", index)
-				//fmt.Println("scrollIndex", scrollIndex)
 				err := autoScroll(wd, fmt.Sprintf(".itemCardArea-cards:nth-child(%v)", scrollIndex))
 				if err != nil {
-					log.Printf("Failed to scroll the page: %v", err)
+					log.Printf("Failed to scroll the scrollIndex: %v", scrollIndex)
 				}
 			}
 			elem, err := item.FindElement(selenium.ByCSSSelector, ".image_link")
 			if err != nil {
-				log.Fatalf("Failed to find element for attribute: %v", err)
+				log.Printf("Failed to find element for attribute: %v", err)
 			}
 			id, err := elem.GetAttribute("data-ga-eec-product-id")
 			if err != nil {
-				log.Fatalf("Failed to get element attribute: %v", err)
+				log.Printf("Failed to get element attribute: %v", err)
 			}
 			ids = append(ids, id)
 		}
@@ -56,10 +53,11 @@ func fetchProductIds(wd selenium.WebDriver) []string {
 
 }
 
-func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
+func fetchProductInfo1(wd selenium.WebDriver, productID string) Product {
 	var product Product
 	url := baseURL + "/products/" + productID + "/"
 
+	log.Printf("Fetching Product info for Url %s", url)
 	if err := wd.Get(url); err != nil {
 		log.Printf("Failed to load page for product ID %s: %v", productID, err)
 		return product
@@ -89,11 +87,12 @@ func autoScroll(wd selenium.WebDriver, selector string) error {
 	if _, err := wd.ExecuteScript("arguments[0].scrollIntoView(true);", []interface{}{el}); err != nil {
 		log.Printf("Failed to scroll element into view: %v", err)
 	}
-	//time.Sleep(1 * time.Second)
+	time.Sleep(1 * time.Second)
 	return nil
 }
 
 func getProductInfo(wd selenium.WebDriver) Product {
+	fmt.Println("Getting Product Detail")
 	var productInfo Product
 
 	productInfo.Breadcrumbs = fetchBreadcrumbs(wd)
@@ -173,11 +172,11 @@ func getCoordinatedProductInfo(wd selenium.WebDriver) []CoordinatedProductInfo {
 func getText(wd selenium.WebDriver, selector string) string {
 	elem, err := wd.FindElement(selenium.ByCSSSelector, selector)
 	if err != nil {
-		log.Fatalf("Failed to find element for text: %v", err)
+		log.Printf("Failed to find element for text: %v", err)
 	}
 	text, err := elem.Text()
 	if err != nil {
-		log.Fatalf("Failed to get element text: %v", err)
+		log.Printf("Failed to get element text: %v", err)
 	}
 	return text
 }
@@ -185,11 +184,11 @@ func getText(wd selenium.WebDriver, selector string) string {
 func getAttribute(wd selenium.WebDriver, selector, attribute string) string {
 	elem, err := wd.FindElement(selenium.ByCSSSelector, selector)
 	if err != nil {
-		log.Fatalf("Failed to find element for attribute: %v", err)
+		log.Printf("Failed to find element for attribute: %v", err)
 	}
 	attr, err := elem.GetAttribute(attribute)
 	if err != nil {
-		log.Fatalf("Failed to get element attribute: %v", err)
+		log.Printf("Failed to get element attribute: %v", err)
 	}
 	return attr
 }
@@ -360,7 +359,7 @@ func parseReviewerIDFromId(id string) string {
 	reviewerID := parts[len(parts)-1]
 	return reviewerID
 }
-func saveProductInfoJSON(product Product, productID string) error {
+func saveProductInfoJSON1(product Product, productID string) error {
 	// Marshal product to JSON
 	productJSON, err := json.MarshalIndent(product, "", "  ")
 	if err != nil {
@@ -386,7 +385,81 @@ func saveProductInfoJSON(product Product, productID string) error {
 
 	return nil
 }
-func saveProductInfoSpreadsheet(product Product) error {
+
+func saveProductInfoJSON(products []Product) error {
+	// Create dist folder if it doesn't exist
+	if err := os.MkdirAll("dist/json", 0755); err != nil {
+		return fmt.Errorf("failed to create dist folder: %w", err)
+	}
+	// Open or create the JSON file
+	filename := fmt.Sprintf("dist/json/products.json")
+	var file *os.File
+	var err error
+	if _, err = os.Stat(filename); os.IsNotExist(err) {
+		file, err = os.Create(filename)
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %w", filename, err)
+		}
+		defer file.Close()
+
+		// Write the opening bracket of the JSON array
+		if _, err := file.WriteString("[\n"); err != nil {
+			return fmt.Errorf("failed to write to file %s: %w", filename, err)
+		}
+	} else {
+		file, err = os.OpenFile(filename, os.O_RDWR|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to open file %s: %w", filename, err)
+		}
+		defer file.Close()
+
+		// Check if file is empty
+		stat, err := file.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to get file stat %s: %w", filename, err)
+		}
+		if stat.Size() > 2 { // Check if file has data other than "[" and "]"
+			// Move the file pointer back to remove the last closing bracket and newline
+			_, err = file.Seek(-2, os.SEEK_END)
+			if err != nil {
+				return fmt.Errorf("failed to seek file %s: %w", filename, err)
+			}
+		} else {
+			// Write a newline before adding new data
+			if _, err := file.WriteString("\n"); err != nil {
+				return fmt.Errorf("failed to write to file %s: %w", filename, err)
+			}
+		}
+	}
+
+	for i, product := range products {
+		// Marshal product to JSON
+		productJSON, err := json.Marshal(product)
+		if err != nil {
+			return fmt.Errorf("failed to marshal product info for index %d: %w", i, err)
+		}
+
+		// Write the JSON object to the file
+		if _, err := file.Write(productJSON); err != nil {
+			return fmt.Errorf("failed to write to file %s: %w", filename, err)
+		}
+		if i < len(products)-1 {
+			// Add comma and newline after each JSON object except the last one
+			if _, err := file.WriteString(",\n"); err != nil {
+				return fmt.Errorf("failed to write to file %s: %w", filename, err)
+			}
+		}
+	}
+
+	// Write the closing bracket of the JSON array
+	if _, err := file.WriteString("\n]"); err != nil {
+		return fmt.Errorf("failed to write to file %s: %w", filename, err)
+	}
+
+	return nil
+}
+
+func saveProductInfoSpreadsheet(products []Product) error {
 
 	// Open the existing Excel file or create a new one if it doesn't exist
 	filename := fmt.Sprintf("dist/sheets/product.xlsx")
@@ -416,50 +489,52 @@ func saveProductInfoSpreadsheet(product Product) error {
 			cell.SetString(header)
 		}
 	}
-	row := sheet.AddRow()
 
-	// Convert Coordinates to JSON
-	coordinatesJSON, err := json.Marshal(product.Coordinates)
-	if err != nil {
-		fmt.Println("Error marshalling Coordinates to JSON:", err)
+	for _, product := range products {
+
+		row := sheet.AddRow()
+		// Convert Coordinates to JSON
+		coordinatesJSON, err := json.Marshal(product.Coordinates)
+		if err != nil {
+			fmt.Println("Error marshalling Coordinates to JSON:", err)
+		}
+
+		// Convert ItemRatings to JSON
+		itemRatingsJSON, err := json.Marshal(product.ProductMeta.ItemRatings)
+		if err != nil {
+			fmt.Println("Error marshalling ItemRatings to JSON:", err)
+		}
+
+		// Convert UserReviews to JSON
+		userReviewsJSON, err := json.Marshal(product.ProductMeta.UserReviews)
+		if err != nil {
+			fmt.Println("Error marshalling UserReviews to JSON:", err)
+		}
+
+		row.AddCell().SetString(product.ID)
+		row.AddCell().SetString(product.Category)
+		row.AddCell().SetString(product.Name)
+		row.AddCell().SetString(product.Price)
+		row.AddCell().SetString(strings.Join(product.Sizes, ","))
+		row.AddCell().SetString(strings.Join(product.Breadcrumbs, ","))
+		row.AddCell().SetString(string(coordinatesJSON)) // Add Coordinates JSON
+		row.AddCell().SetString(product.DescriptionTitle)
+		row.AddCell().SetString(product.DescriptionMainText)
+		row.AddCell().SetString(strings.Join(product.DescriptionItemization, ","))
+		row.AddCell().SetString(fmt.Sprintf("%v", product.SizeChart))
+		row.AddCell().SetString(product.ProductMeta.OverallRating)
+		row.AddCell().SetString(product.ProductMeta.NumberOfReviews)
+		row.AddCell().SetString(product.ProductMeta.RecommendedRate)
+		row.AddCell().SetString(string(itemRatingsJSON)) // Add ItemRatings JSON
+		row.AddCell().SetString(string(userReviewsJSON)) // Add UserReviews JSON
+
 	}
-
-	// Convert ItemRatings to JSON
-	itemRatingsJSON, err := json.Marshal(product.ProductMeta.ItemRatings)
-	if err != nil {
-		fmt.Println("Error marshalling ItemRatings to JSON:", err)
-	}
-
-	// Convert UserReviews to JSON
-	userReviewsJSON, err := json.Marshal(product.ProductMeta.UserReviews)
-	if err != nil {
-		fmt.Println("Error marshalling UserReviews to JSON:", err)
-	}
-
-	row.AddCell().SetString(product.ID)
-	row.AddCell().SetString(product.Category)
-	row.AddCell().SetString(product.Name)
-	row.AddCell().SetString(product.Price)
-	row.AddCell().SetString(strings.Join(product.Sizes, ","))
-	row.AddCell().SetString(strings.Join(product.Breadcrumbs, ","))
-	row.AddCell().SetString(string(coordinatesJSON)) // Add Coordinates JSON
-	row.AddCell().SetString(product.DescriptionTitle)
-	row.AddCell().SetString(product.DescriptionMainText)
-	row.AddCell().SetString(strings.Join(product.DescriptionItemization, ","))
-	row.AddCell().SetString(fmt.Sprintf("%v", product.SizeChart))
-	row.AddCell().SetString(product.ProductMeta.OverallRating)
-	row.AddCell().SetString(product.ProductMeta.NumberOfReviews)
-	row.AddCell().SetString(product.ProductMeta.RecommendedRate)
-	row.AddCell().SetString(string(itemRatingsJSON)) // Add ItemRatings JSON
-	row.AddCell().SetString(string(userReviewsJSON)) // Add UserReviews JSON
-
 	// Save the Excel file
 	err = fileExcel.Save(filename)
 	if err != nil {
 		fmt.Println("Error saving Excel file:", err)
 		return err
 	}
-
 	fmt.Println("Product saved into excel file successfully")
 
 	return nil
