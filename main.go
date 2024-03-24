@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/tebeka/selenium/chrome"
 	"log"
 	"strconv"
@@ -33,7 +34,8 @@ func main() {
 	wd := createWebDriver(port)
 	defer wd.Quit()
 	ids := fetchProductIds(wd)
-	for _, productID := range ids {
+	for i, productID := range ids {
+		fmt.Printf("[%v]Fetching Product Info for: %v", i, productID)
 		product := fetchProductInfo(wd, productID)
 		if product.Name == "" {
 			log.Printf("Failed to fetch product info for ID %s", productID)

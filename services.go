@@ -58,9 +58,7 @@ func fetchProductIds(wd selenium.WebDriver) []string {
 
 func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
 	var product Product
-
 	url := baseURL + "/products/" + productID + "/"
-	fmt.Println("Fetching Product Info for: ", url)
 
 	if err := wd.Get(url); err != nil {
 		log.Printf("Failed to load page for product ID %s: %v", productID, err)
