@@ -289,3 +289,17 @@ func parseProductMeta(wd selenium.WebDriver) ProductMeta {
 
 	return productMeta
 }
+
+func parseProductTags(wd selenium.WebDriver) []string {
+	var tags []string
+
+	// Extract item tags
+	itemTagElems, _ := wd.FindElements(selenium.ByCSSSelector, ".itemTagsPosition .test-category_link .inner a")
+	for _, itemTagElem := range itemTagElems {
+		tag, _ := itemTagElem.Text()
+
+		tags = append(tags, tag)
+	}
+
+	return tags
+}

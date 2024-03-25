@@ -160,7 +160,7 @@ func saveProductInfoSpreadsheet(products []Product) error {
 	// If the sheet is empty, add headers
 	if sheet.MaxRow == 0 {
 		row := sheet.AddRow()
-		headers := []string{"ID", "Category", "Name", "Price", "Sizes", "Breadcrumbs", "Coordinates", "Description Title", "Description MainText", "Description Itemization", "SizeChart", "OverallRating", "NumberOfReviews", "RecommendedRate", "ItemRatings", "UserReviews"}
+		headers := []string{"ID", "Category", "Name", "Price", "Sizes", "Breadcrumbs", "Coordinates", "Description Title", "Description MainText", "Description Itemization", "SizeChart", "OverallRating", "NumberOfReviews", "RecommendedRate", "KWs", "ItemRatings", "UserReviews"}
 		for _, header := range headers {
 			cell := row.AddCell()
 			cell.SetString(header)
@@ -202,6 +202,7 @@ func saveProductInfoSpreadsheet(products []Product) error {
 		row.AddCell().SetString(product.ProductMeta.OverallRating)
 		row.AddCell().SetString(product.ProductMeta.NumberOfReviews)
 		row.AddCell().SetString(product.ProductMeta.RecommendedRate)
+		row.AddCell().SetString(strings.Join(product.Tags, ","))
 		row.AddCell().SetString(string(itemRatingsJSON)) // Add ItemRatings JSON
 		row.AddCell().SetString(string(userReviewsJSON)) // Add UserReviews JSON
 

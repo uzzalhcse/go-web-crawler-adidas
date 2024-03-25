@@ -31,9 +31,9 @@ func main() {
 	startTime := time.Now()
 	fetchProduct(wd, ids)
 
-	if err := saveProductInfoJSON(products); err != nil {
-		log.Printf("Failed to save Json %v", err)
-	}
+	//if err := saveProductInfoJSON(products); err != nil {
+	//	log.Printf("Failed to save Json %v", err)
+	//}
 	if err := saveProductInfoSpreadsheet(products); err != nil {
 		log.Printf("Failed to save Xlxs %v", err)
 	}
@@ -46,7 +46,6 @@ func fetchProduct(wd selenium.WebDriver, ids []string) {
 		product := fetchProductInfo(wd, productID)
 		products = append(products, product)
 
-		//fetchDummy(wd, productID)
 		log.Printf("Product info for ID %s Fetched successfully", productID)
 	}
 
@@ -61,12 +60,12 @@ func createWebDriver(port int) selenium.WebDriver {
 			Path: "",
 			Args: []string{
 				"--window-size=1920,1080",
-				//"--headless",
+				"--headless",
 				"--no-sandbox",
 				"--log-level=3",
-				//"--disable-gpu",
-				//"--disable-dev-shm-usage",
-				//"--disable-web-security",
+				"--disable-gpu",
+				"--disable-dev-shm-usage",
+				"--disable-web-security",
 			},
 		},
 	)
@@ -97,6 +96,7 @@ func fetchProductInfo(wd selenium.WebDriver, productID string) Product {
 	product.Coordinates = getCoordinatedProductInfo(wd)
 	product.SizeChart = parseSizeChartHTML(wd)
 	product.ProductMeta = parseProductMeta(wd)
+	product.Tags = parseProductTags(wd)
 
 	totalTime := time.Since(startTime).Seconds()
 	log.Printf("Time elapsed: %.2f Secounds", totalTime)

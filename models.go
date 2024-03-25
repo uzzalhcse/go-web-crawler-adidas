@@ -13,6 +13,7 @@ type Product struct {
 	Coordinates            []CoordinatedProductInfo
 	SizeChart              SizeChart
 	ProductMeta            ProductMeta
+	Tags                   []string
 }
 
 type CoordinatedProductInfo struct {
