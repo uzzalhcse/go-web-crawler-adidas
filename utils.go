@@ -139,7 +139,7 @@ func saveProductInfoSpreadsheet(products []Product) error {
 		return fmt.Errorf("failed to create dist folder: %w", err)
 	}
 	// Open the existing Excel file or create a new one if it doesn't exist
-	filename := fmt.Sprintf("dist/sheets/product.xlsx")
+	filename := fmt.Sprintf("dist/sheets/products.xlsx")
 	fileExcel, err := xlsx.OpenFile(filename)
 	if err != nil {
 		fileExcel = xlsx.NewFile()
