@@ -7,7 +7,7 @@ import (
 )
 
 func fetchProductIds(wd selenium.WebDriver) []string {
-	totalPages := []int{1}
+	totalPages := []int{1, 2, 3}
 	var ids []string
 
 	for _, page := range totalPages {

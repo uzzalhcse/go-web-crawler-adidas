@@ -36,7 +36,6 @@ type Review struct {
 	ReviewerID  string
 }
 
-// ItemRating struct represents the rating for a specific item
 type ItemRating struct {
 	Label  string
 	Rating string
