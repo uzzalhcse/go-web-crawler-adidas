@@ -17,7 +17,7 @@ This project is a web scraper tool designed to extract product information from 
 
 1.  Clone the repository:
 
-    `git clone https://github.com/yourusername/adidas-product-scraper.git`
+    `git clone https://github.com/uzzalhcse/go-web-crawler-adidas.git`
 
 2.  Install dependencies:
 
